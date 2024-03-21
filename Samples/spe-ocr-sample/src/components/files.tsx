@@ -29,7 +29,11 @@ import {
   DriveItem
 } from "@microsoft/microsoft-graph-types-beta";
 import { IContainer } from "./../common/IContainer";
+import { SearchBox } from '@fluentui/react/lib/SearchBox';
+import { initializeIcons } from '@fluentui/react/lib/Icons';
 require('isomorphic-fetch');
+
+initializeIcons();
 
 interface IFilesProps {
   container: IContainer;
@@ -64,7 +68,6 @@ export const Files = (props: IFilesProps) => {
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const uploadFileRef = useRef<HTMLInputElement>(null);
-
   // BOOKMARK 1 - constants & hooks
 
   useEffect(() => {
@@ -101,6 +104,7 @@ export const Files = (props: IFilesProps) => {
   const onSelectionChange: DataGridProps["onSelectionChange"] = (event: React.MouseEvent | React.KeyboardEvent, data: OnSelectionChangeData): void => {
     setSelectedRows(data.selectedItems);
   }
+
   const onDownloadItemClick = (downloadUrl: string) => {
     const link = downloadLinkRef.current;
     link!.href = downloadUrl;
@@ -137,7 +141,6 @@ export const Files = (props: IFilesProps) => {
     await loadItems(folderId || 'root');
     setDeleteDialogOpen(false);
   }
-
   const onUploadFileClick = () => {
     if (uploadFileRef.current) {
       uploadFileRef.current.click();
@@ -164,22 +167,69 @@ export const Files = (props: IFilesProps) => {
     });
   };
 
+
   const previewFiles = async (item: DriveItem) => {
 
     const graphClient = Providers.globalProvider.graph.client;
     const driveId = props.container.id;
-    
-    const extension = item.name? (item.name).slice(((item.name).lastIndexOf(".") - 1 >>> 0) + 2) : '';
+    const extension = item.name ? (item.name).slice(((item.name).lastIndexOf(".") - 1 >>> 0) + 2) : '';
     const linkableFileTypes = new Set(["doc", "docx", "xlsx", "xls", "csv", "pptx", "ppt"]);
-    const resp = await graphClient.api(`/drives/${driveId}/items/${item.id}/preview`).post({ });
+    const resp = await graphClient.api(`/drives/${driveId}/items/${item.id}/preview`).post({});
 
-    linkableFileTypes.has(extension) 
-    ?
-      window.open(item.webUrl!, '_blank') 
-    :
+    linkableFileTypes.has(extension)
+      ?
+      window.open(item.webUrl!, '_blank')
+      :
       window.open(resp.getUrl + '&nb=true', '_blank');
   }
 
+  const doTheSearch = async (searchText: string) => {
+    try {
+      const graphClient = Providers.globalProvider.graph.client;
+      const containerId = props.container.id;
+      let searchQuery: string;
+      if (searchText) {
+        searchQuery = "ContainerId: " + containerId + " AND " + searchText;
+      }
+      else {
+        searchQuery = "ContainerId: " + containerId;
+      }
+      const containerRequestData = {
+        "requests": [
+          {
+            "entityTypes": [
+              "driveItem"
+            ],
+            "query": {
+              "queryString": searchQuery
+            }
+          }
+        ]
+      }
+      const resp = await graphClient.api(`search/query`).version('beta').post(containerRequestData);
+      const numberOfHits = resp.value[0].hitsContainers[0].total;
+      let i=0;
+      const items: IDriveItemExtended[] = [];
+      if(numberOfHits) {
+        for(i=0; i<numberOfHits; i++) {
+          const itemId = resp.value[0].hitsContainers[0].hits[i].hitId;
+          const driveItem = await graphClient.api(`/drives/${containerId}/items/${itemId}`).get();
+          items.push({
+            ...driveItem,
+            isFolder: (driveItem.folder) ? true : false,
+            modifiedByName: (driveItem.lastModifiedBy?.user?.displayName) ? driveItem.lastModifiedBy!.user!.displayName : 'unknown',
+            iconElement: (driveItem.folder) ? <FolderRegular /> : <DocumentRegular />,
+            downloadUrl: (driveItem as any)['@microsoft.graph.downloadUrl']
+          });
+        }
+      }
+      setDriveItems(items);
+
+    } catch (error: any) {
+      console.error(`Failed to load items: ${error.message}`);
+    }
+
+  }
   // BOOKMARK 2 - handlers go here
   const columns: TableColumnDefinition<IDriveItemExtended>[] = [
     createTableColumn({
@@ -273,7 +323,6 @@ export const Files = (props: IFilesProps) => {
     }
   };
   // BOOKMARK 3 - component rendering return (
-
   const styles = useStyles();
 
   return (
@@ -284,7 +333,11 @@ export const Files = (props: IFilesProps) => {
       <Toolbar>
         <ToolbarButton vertical icon={<AddRegular />} onClick={() => setNewFolderDialogOpen(true)}>New Folder</ToolbarButton>
         <ToolbarButton vertical icon={<ArrowUploadRegular />} onClick={onUploadFileClick}>Upload File</ToolbarButton>
+        <div className="searchbox">
+          <SearchBox placeholder="Search" onSearch={doTheSearch} />
+        </div>
       </Toolbar>
+
 
 
       <Dialog open={newFolderDialogOpen}>

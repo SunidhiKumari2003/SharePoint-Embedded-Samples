@@ -17,6 +17,13 @@ import { IContainer } from "./../common/IContainer";
 import SpEmbedded from '../services/spembedded';
 import type { DropdownProps } from "@fluentui/react-components";
 import { Files } from "./files";
+import { Providers } from "@microsoft/mgt-element";
+import { Container } from 'react-dom';
+import { IColumn } from '../common/IColumn';
+import { Stack, IStackTokens } from '@fluentui/react/lib/Stack';
+import { SearchBox } from '@fluentui/react/lib/SearchBox'; 
+
+
 
 const SpEmbeddedConst = new SpEmbedded();
 
@@ -95,10 +102,108 @@ export const Containers = (props: any) => {
     const onContainerDropdownChange = (selectedOption: any, data: OptionOnSelectData) => {
         const selected = containers.find((container) => container.id === data.optionValue);
         setSelectedContainer(selected);
+        createColumns(selected!);
         console.log(selectedOption);
     };
 
+    const listColumns = async (container: IContainer) => {
+        const graphClient = Providers.globalProvider.graph.client;
+        const containerId = container.id;
+        const resp = await graphClient.api(`storage/fileStorage/containers/${containerId}/columns`).version('beta').get();
+        const columns = (resp.value) as IColumn[];
+        console.log(columns);
+    }
+
+    const createColumns = async (container: IContainer) => {
+        const graphClient = Providers.globalProvider.graph.client;
+        const containerId = container.id;
+
+        const newColumns = [{
+            "name": "Merchant",
+            "displayName": "Merchant",
+            "description": "Name of the merchant",
+            "enforceUniqueValues": false, // Must be false (true not supported with Containers)
+            "hidden": false,
+            "indexed": true, // Set to true to be able to search files based on this column
+            "text": {// https://learn.microsoft.com/en-us/graph/api/resources/textcolumn?view=graph-rest-1.0
+                "allowMultipleLines": false,
+                "appendChangesToExistingText": false,
+                "linesForEditing": 0,
+                "maxLength": 255
+            }
+        },
+        {
+            "name": "TransactionDate",
+            "displayName": "TransactionDate",
+            "description": "Date of the transaction",
+            "enforceUniqueValues": false, // Must be false (true not supported with Containers)
+            "hidden": false,
+            "indexed": false, // Set to true to be able to search files based on this column
+            "dateTime": {
+                "displayAs": "friendly",
+                "format": "dateOnly | dateTime"
+            }
+        },
+        {
+            "name": "Total",
+            "displayName": "Total",
+            "description": "Total price of the transaction",
+            "enforceUniqueValues": false, // Must be false (true not supported with Containers)
+            "hidden": false,
+            "indexed": false, // Set to true to be able to search files based on this column
+            "number": {
+                "decimalPlaces": "two",
+                "displayAs": "number",
+                "minimum": 0
+            }
+        },
+        {
+            "name": "Currency",
+            "displayName": "Currency",
+            "description": "Currency of the transaction",
+            "enforceUniqueValues": false, // Must be false (true not supported with Containers)
+            "hidden": false,
+            "indexed": true, // Set to true to be able to search files based on this column
+            "text": {
+                // https://learn.microsoft.com/en-us/graph/api/resources/textcolumn?view=graph-rest-1.0
+                "allowMultipleLines": false,
+                "appendChangesToExistingText": false,
+                "linesForEditing": 0,
+                "maxLength": 3
+            }
+        }
+        ];
+
+        newColumns.forEach(async (newColumn) => {
+            //TBD: introduce wait time to avoid throttling
+            try {
+                const resp = await graphClient.api(`storage/fileStorage/containers/${containerId}/columns`).version('beta').post(newColumn);
+                const tempColumns = (resp.value) as IColumn[];
+                //TBD:error handling for auto-renaming
+            } catch (error: any) {
+                console.error(`Failed to create column: ${error.message}`);
+            }
+        });
+        listColumns(container);
+    }
+
+    const getColumns = async (container: IContainer, column: IColumn) => {
+        const graphClient = Providers.globalProvider.graph.client;
+        const containerId = container.id;
+        const columnId = column.id;
+        try {
+            const resp = await graphClient.api(`storage/fileStorage/containers/${containerId}/columns/${columnId}`).version('beta').get();
+            console.log(resp);
+        } catch (error: any) {
+            console.error(`Unable to get column: ${error.message}`);
+        }
+    }
+
     const styles = useStyles();
+    const stackTokens: Partial<IStackTokens> = { childrenGap: 20 };
+
+
+
     // BOOKMARK 3 - component rendering
     return (
         <div className={styles.root}>

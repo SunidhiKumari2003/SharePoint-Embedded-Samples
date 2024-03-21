@@ -19,10 +19,7 @@ export abstract class ReceiptProcessor {
                     console.log(item.name);
                     const url = item["@microsoft.graph.downloadUrl"];
                     const receipt = await this.analyzeReceiptStream(await this.getDriveItemStream(url));
-                    const receiptString = JSON.stringify(receipt, null, 2)
-                    const fileName = this.getFileDisplayName(item.name) + "-extracted-fields.json";
-                    const parentId = item.parentReference.id;
-                    await GraphProvider.addDriveItem(driveId, parentId, fileName, receiptString);
+                    await GraphProvider.updateFields(driveId, item.id, receipt);
                 }
             } catch (error) {
                 console.log(error);
