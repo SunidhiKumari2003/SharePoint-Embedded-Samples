@@ -103,7 +103,6 @@ export const Containers = (props: any) => {
         const selected = containers.find((container) => container.id === data.optionValue);
         setSelectedContainer(selected);
         createColumns(selected!);
-        console.log(selectedOption);
     };
 
     const listColumns = async (container: IContainer) => {
