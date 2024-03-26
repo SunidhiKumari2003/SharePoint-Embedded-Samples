@@ -8,5 +8,5 @@ export interface IColumn {
     type: string;
     text: JSON;
     number: JSON;
-    datetime: JSON;
+    datetime: Date;
 }

@@ -44,6 +44,10 @@ interface IDriveItemExtended extends DriveItem {
   modifiedByName: string;
   iconElement: JSX.Element;
   downloadUrl: string;
+  merchant: string;
+  transactionDate: number;
+  total: number;
+  currency: string;
 }
 
 const useStyles = makeStyles({
@@ -58,6 +62,7 @@ const useStyles = makeStyles({
   }
 });
 
+
 export const Files = (props: IFilesProps) => {
   const [driveItems, setDriveItems] = useState<IDriveItemExtended[]>([]);
   const [selectedRows, setSelectedRows] = useState<Set<SelectionItemId>>(new Set<TableRowId>([1]));
@@ -68,11 +73,14 @@ export const Files = (props: IFilesProps) => {
   const [newFolderDialogOpen, setNewFolderDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const uploadFileRef = useRef<HTMLInputElement>(null);
+
+
   // BOOKMARK 1 - constants & hooks
 
   useEffect(() => {
     (async () => {
       loadItems();
+      console.log("done loadItems")
     })();
   }, [props]);
 
@@ -84,23 +92,35 @@ export const Files = (props: IFilesProps) => {
 
       // get Container items at current level
       const graphResponse = await graphClient.api(`/drives/${driveId}/items/${driveItemId}/children`).get();
-      const containerItems: DriveItem[] = graphResponse.value as DriveItem[]
+      console.log("graphResponse", graphResponse.value.length, graphResponse.value[0].id)
+      const numberOfItems = graphResponse.value.length;
+      let i=0;
       const items: IDriveItemExtended[] = [];
-      containerItems.forEach((driveItem: DriveItem) => {
-        items.push({
-          ...driveItem,
-          isFolder: (driveItem.folder) ? true : false,
-          modifiedByName: (driveItem.lastModifiedBy?.user?.displayName) ? driveItem.lastModifiedBy!.user!.displayName : 'unknown',
-          iconElement: (driveItem.folder) ? <FolderRegular /> : <DocumentRegular />,
-          downloadUrl: (driveItem as any)['@microsoft.graph.downloadUrl']
-        });
-      });
+      if(numberOfItems){
+        for(i=0; i<numberOfItems; i++){
+          const itemId = graphResponse.value[i].id;
+          const driveItem = await graphClient.api(`/drives/${driveId}/items/${itemId}`).get();
+          const fileFields = await graphClient.api(`drives/${driveId}/items/${itemId}/listitem/fields`).get();
+          items.push({
+            ...driveItem,
+            isFolder: (driveItem.folder) ? true : false,
+            modifiedByName: (driveItem.lastModifiedBy?.user?.displayName) ? driveItem.lastModifiedBy!.user!.displayName : 'unknown',
+            iconElement: (driveItem.folder) ? <FolderRegular /> : <DocumentRegular />,
+            downloadUrl: (driveItem as any)['@microsoft.graph.downloadUrl'],
+            merchant: fileFields.Merchant ? fileFields.Merchant : '',
+            transactionDate: fileFields.TransactionDate ? fileFields.TransactionDate : '',
+            total: fileFields.Total ? fileFields.Total : '',
+            currency: fileFields.Currency ? fileFields.Currency : ''
+          });
+        }
+      }
       setDriveItems(items);
     } catch (error: any) {
       console.error(`Failed to load items: ${error.message}`);
     }
   };
 
+ 
   const onSelectionChange: DataGridProps["onSelectionChange"] = (event: React.MouseEvent | React.KeyboardEvent, data: OnSelectionChangeData): void => {
     setSelectedRows(data.selectedItems);
   }
@@ -169,7 +189,6 @@ export const Files = (props: IFilesProps) => {
 
 
   const previewFiles = async (item: DriveItem) => {
-
     const graphClient = Providers.globalProvider.graph.client;
     const driveId = props.container.id;
     const extension = item.name ? (item.name).slice(((item.name).lastIndexOf(".") - 1 >>> 0) + 2) : '';
@@ -208,18 +227,23 @@ export const Files = (props: IFilesProps) => {
       }
       const resp = await graphClient.api(`search/query`).version('beta').post(containerRequestData);
       const numberOfHits = resp.value[0].hitsContainers[0].total;
-      let i=0;
+      let i = 0;
       const items: IDriveItemExtended[] = [];
-      if(numberOfHits) {
-        for(i=0; i<numberOfHits; i++) {
+      if (numberOfHits) {
+        for (i = 0; i < numberOfHits; i++) {
           const itemId = resp.value[0].hitsContainers[0].hits[i].hitId;
           const driveItem = await graphClient.api(`/drives/${containerId}/items/${itemId}`).get();
+          const fileFields = await graphClient.api(`drives/${containerId}/items/${itemId}/listitem/fields`).get();
           items.push({
             ...driveItem,
             isFolder: (driveItem.folder) ? true : false,
             modifiedByName: (driveItem.lastModifiedBy?.user?.displayName) ? driveItem.lastModifiedBy!.user!.displayName : 'unknown',
             iconElement: (driveItem.folder) ? <FolderRegular /> : <DocumentRegular />,
-            downloadUrl: (driveItem as any)['@microsoft.graph.downloadUrl']
+            downloadUrl: (driveItem as any)['@microsoft.graph.downloadUrl'],
+            merchant: fileFields.Merchant ? fileFields.Merchant : '',
+            transactionDate: fileFields.TransactionDate ? fileFields.TransactionDate : '',
+            total: fileFields.Total ? fileFields.Total : '',
+            currency: fileFields.Currency ? fileFields.Currency : ''
           });
         }
       }
@@ -270,14 +294,54 @@ export const Files = (props: IFilesProps) => {
       }
     }),
     createTableColumn({
-      columnId: 'lastModifiedBy',
+      columnId: 'merchant',
       renderHeaderCell: () => {
-        return 'Last Modified By'
+        return 'Merchant'
       },
       renderCell: (driveItem) => {
         return (
           <TableCellLayout>
-            {driveItem.modifiedByName}
+            {driveItem.merchant}
+          </TableCellLayout>
+        )
+      }
+    }),
+
+    createTableColumn({
+      columnId: 'transactionDate',
+      renderHeaderCell: () => {
+        return 'Transaction Timestamp'
+      },
+      renderCell: (driveItem) => {
+        return (
+          <TableCellLayout>
+            {driveItem.transactionDate}
+          </TableCellLayout>
+        )
+      }
+    }),
+    createTableColumn({
+      columnId: 'total',
+      renderHeaderCell: () => {
+        return 'Total'
+      },
+      renderCell: (driveItem) => {
+        return (
+          <TableCellLayout>
+            {driveItem.total}
+          </TableCellLayout>
+        )
+      }
+    }),
+    createTableColumn({
+      columnId: 'currency',
+      renderHeaderCell: () => {
+        return 'Currency'
+      },
+      renderCell: (driveItem) => {
+        return (
+          <TableCellLayout>
+            {driveItem.currency}
           </TableCellLayout>
         )
       }

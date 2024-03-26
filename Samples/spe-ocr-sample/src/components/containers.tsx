@@ -10,18 +10,14 @@ import {
     makeStyles, shorthands, useId
 } from '@fluentui/react-components';
 import type {
-    OptionOnSelectData,
-    SelectionEvents
+    OptionOnSelectData
 } from '@fluentui/react-combobox'
 import { IContainer } from "./../common/IContainer";
 import SpEmbedded from '../services/spembedded';
-import type { DropdownProps } from "@fluentui/react-components";
 import { Files } from "./files";
 import { Providers } from "@microsoft/mgt-element";
-import { Container } from 'react-dom';
 import { IColumn } from '../common/IColumn';
-import { Stack, IStackTokens } from '@fluentui/react/lib/Stack';
-import { SearchBox } from '@fluentui/react/lib/SearchBox'; 
+import * as Constants from "../common/constants";
 
 
 
@@ -65,6 +61,7 @@ export const Containers = (props: any) => {
     const containerDescription = useId('containerDescription');
     const [description, setDescription] = useState('');
     const [creatingContainer, setCreatingContainer] = useState(false);
+    const [containerColumns, setContainerColumns] = useState<IColumn[]>([]);
     // BOOKMARK 1 - constants & hooks
     useEffect(() => {
         (async () => {
@@ -74,6 +71,8 @@ export const Containers = (props: any) => {
             }
         })();
     }, []);
+
+
     const handleNameChange: InputProps["onChange"] = (event: React.ChangeEvent<HTMLInputElement>, data: InputOnChangeData): void => {
         setName(data?.value);
     };
@@ -99,18 +98,37 @@ export const Containers = (props: any) => {
         setCreatingContainer(false);
     }
     // BOOKMARK 2 - handlers go here
-    const onContainerDropdownChange = (selectedOption: any, data: OptionOnSelectData) => {
+    const onContainerDropdownChange = async (selectedOption: any, data: OptionOnSelectData) => {
         const selected = containers.find((container) => container.id === data.optionValue);
         setSelectedContainer(selected);
         createColumns(selected!);
-    };
+        const notificationUrl = "https://" + Constants.NGROK_PORT +".ngrok-free.app/api/onReceiptAdded?driveId=" + (selected?.id ?? '');
+        const resource = "drives/" + selected?.id + "/root";
+        const now = new Date()
+        const duration = 1000 * 60 * 4230; // max lifespan of driveItem subscription is 4230 minutes
+        const expiry = new Date(now.getTime() + duration);
+        const expiryDateTime = expiry.toISOString();
+        const graphClient = Providers.globalProvider.graph.client;
+        const body = {
+            "changeType": "updated",
+            "notificationUrl": notificationUrl,
+            "resource": resource,
+            "expirationDateTime": expiryDateTime,
+            "clientState": ""
+        }
+        await graphClient.api(`subscriptions`).post(body);
+    }
 
-    const listColumns = async (container: IContainer) => {
+    const doesColumnExist = async (container: IContainer, column: string) => {
         const graphClient = Providers.globalProvider.graph.client;
         const containerId = container.id;
         const resp = await graphClient.api(`storage/fileStorage/containers/${containerId}/columns`).version('beta').get();
         const columns = (resp.value) as IColumn[];
-        console.log(columns);
+        for (var i = 0; i < columns.length; i++) {
+            if (columns[i].displayName === column)
+                return true;
+        }
+        return false;
     }
 
     const createColumns = async (container: IContainer) => {
@@ -174,16 +192,18 @@ export const Containers = (props: any) => {
         ];
 
         newColumns.forEach(async (newColumn) => {
-            //TBD: introduce wait time to avoid throttling
-            try {
-                const resp = await graphClient.api(`storage/fileStorage/containers/${containerId}/columns`).version('beta').post(newColumn);
-                const tempColumns = (resp.value) as IColumn[];
-                //TBD:error handling for auto-renaming
-            } catch (error: any) {
-                console.error(`Failed to create column: ${error.message}`);
+            const checkForThisColumn = await doesColumnExist(container, newColumn.displayName);
+            if (checkForThisColumn === false) {
+                try {
+                    await graphClient.api(`storage/fileStorage/containers/${containerId}/columns`).version('beta').post(newColumn);
+                } catch (error: any) {
+                    console.error(`Failed to create column: ${error.message}`);
+                }
+            }
+            else {
+                console.log(`Column ${newColumn.displayName} already exists`);
             }
         });
-        listColumns(container);
     }
 
     const getColumns = async (container: IContainer, column: IColumn) => {
@@ -192,14 +212,14 @@ export const Containers = (props: any) => {
         const columnId = column.id;
         try {
             const resp = await graphClient.api(`storage/fileStorage/containers/${containerId}/columns/${columnId}`).version('beta').get();
-            console.log(resp);
+            setContainerColumns(resp.values);
         } catch (error: any) {
             console.error(`Unable to get column: ${error.message}`);
         }
     }
 
     const styles = useStyles();
-    const stackTokens: Partial<IStackTokens> = { childrenGap: 20 };
+
 
 
 
