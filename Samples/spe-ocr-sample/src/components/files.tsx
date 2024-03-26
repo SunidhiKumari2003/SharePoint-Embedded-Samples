@@ -92,12 +92,12 @@ export const Files = (props: IFilesProps) => {
 
       // get Container items at current level
       const graphResponse = await graphClient.api(`/drives/${driveId}/items/${driveItemId}/children`).get();
-      console.log("graphResponse", graphResponse.value.length, graphResponse.value[0].id)
+      const containerItems: DriveItem[] = graphResponse.value as DriveItem[]
       const numberOfItems = graphResponse.value.length;
-      let i=0;
       const items: IDriveItemExtended[] = [];
-      if(numberOfItems){
-        for(i=0; i<numberOfItems; i++){
+      let i = 0;
+      if (numberOfItems) {
+        for (i = 0; i < numberOfItems; i++) {
           const itemId = graphResponse.value[i].id;
           const driveItem = await graphClient.api(`/drives/${driveId}/items/${itemId}`).get();
           const fileFields = await graphClient.api(`drives/${driveId}/items/${itemId}/listitem/fields`).get();
@@ -114,13 +114,28 @@ export const Files = (props: IFilesProps) => {
           });
         }
       }
+      else {
+        containerItems.forEach((driveItem: DriveItem) => {
+          items.push({
+            ...driveItem,
+            isFolder: (driveItem.folder) ? true : false,
+            modifiedByName: (driveItem.lastModifiedBy?.user?.displayName) ? driveItem.lastModifiedBy!.user!.displayName : 'unknown',
+            iconElement: (driveItem.folder) ? <FolderRegular /> : <DocumentRegular />,
+            downloadUrl: (driveItem as any)['@microsoft.graph.downloadUrl'],
+            merchant: '',
+            transactionDate: 0,
+            total: 0,
+            currency: ''
+          });
+        });
+      }
       setDriveItems(items);
     } catch (error: any) {
       console.error(`Failed to load items: ${error.message}`);
     }
   };
 
- 
+
   const onSelectionChange: DataGridProps["onSelectionChange"] = (event: React.MouseEvent | React.KeyboardEvent, data: OnSelectionChangeData): void => {
     setSelectedRows(data.selectedItems);
   }
